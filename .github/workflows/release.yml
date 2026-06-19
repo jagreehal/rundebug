@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run package
+      - run: npm run vsix
+      # Publish to the VS Code Marketplace (needs VSCE_PAT secret).
+      - name: Publish to VS Code Marketplace
+        run: npm run publish:vsce
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      # Publish to Open VSX for Cursor / Windsurf / VSCodium (needs OVSX_PAT secret).
+      - name: Publish to Open VSX
+        run: npm run publish:ovsx
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: '*.vsix'
