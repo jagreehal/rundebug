@@ -2,7 +2,7 @@
   "name": "rundebug",
   "displayName": "Run/Debug Configurations",
   "description": "One-click run AND debug for any file, with JetBrains-style run configurations. No JSON wrangling.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "jagreehal",
   "license": "MIT",
   "engines": {
