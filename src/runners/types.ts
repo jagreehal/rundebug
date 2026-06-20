@@ -15,6 +15,8 @@ export interface RunContext {
   workspaceFolder: string;
   /** Path of the file relative to the workspace folder. */
   relativeFile: string;
+  /** Directory for compiled output binaries; defaults to `fileDirname`. */
+  outputDir?: string;
   /** Selected text, when running a selection. */
   selection?: string;
 }

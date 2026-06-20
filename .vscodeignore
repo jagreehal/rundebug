@@ -12,3 +12,5 @@ images/icon.svg
 **/*.map
 **/*.ts
 .gitignore
+pnpm-lock.yaml
+pnpm-workspace.yaml

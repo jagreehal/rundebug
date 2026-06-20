@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Lint, typecheck & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check
+        run: pnpm run check
+
+      - name: Build
+        run: pnpm run compile
+
+      # The integration suite runs in a real VS Code instance, which needs a
+      # display on Linux — hence xvfb. `pnpm exec` is used to skip the `pretest`
+      # hook (it shells out to npm) and run the already-built tests directly.
+      - name: Integration tests (VS Code)
+        run: xvfb-run -a pnpm exec vscode-test

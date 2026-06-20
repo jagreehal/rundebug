@@ -60,6 +60,11 @@ export class WatchManager {
     this.render();
   }
 
+  /** URIs currently being watched, in start order. */
+  list(): vscode.Uri[] {
+    return [...this.watches.values()].map((w) => w.uri);
+  }
+
   private render(): void {
     const n = this.watches.size;
     if (n === 0) {
@@ -68,11 +73,15 @@ export class WatchManager {
     }
     const last = [...this.watches.values()].at(-1)!;
     const name = last.uri.path.split('/').pop() ?? '';
+    // One watch: click stops it. Several: click opens a per-file picker.
     this.status.text =
       n === 1
         ? `$(eye) Run/Debug: watching ${name}`
         : `$(eye) Run/Debug: watching ${n} files`;
-    this.status.tooltip = 'Click to stop watching';
+    this.status.command =
+      n === 1 ? 'rundebug.stopAllWatches' : 'rundebug.stopWatch';
+    this.status.tooltip =
+      n === 1 ? 'Click to stop watching' : 'Click to choose watches to stop';
     this.status.show();
   }
 

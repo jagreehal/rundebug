@@ -1,39 +1,14 @@
-import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import {
-  runnerForExtension,
-  runnerForLanguageId,
-  runtimeFor,
-} from '../runners/registry';
-import { nodeTypeStrippingFlag } from '../run/runner';
+  prepareDebugConfiguration,
+  resolveDefaultLanguageSelection,
+  resolveRuntimeSelection,
+  runBuildCommand,
+} from '../runners/runtimeSupport';
 import type { DebugTemplate } from '../runners/types';
 import { contextForUri, workspaceFolderForUri } from '../util/context';
-
-let buildChannel: vscode.OutputChannel | undefined;
-
-/** Run a compile command, streaming output; resolves true on exit code 0. */
-function runCompile(command: string, cwd: string): Promise<boolean> {
-  if (!buildChannel) {
-    buildChannel = vscode.window.createOutputChannel('Run/Debug Build');
-  }
-  const channel = buildChannel;
-  channel.clear();
-  channel.show(true);
-  channel.appendLine(`> ${command}`);
-  return new Promise((resolve) => {
-    const child = spawn(command, { cwd, shell: true });
-    child.stdout?.on('data', (d: Buffer) => channel.append(d.toString()));
-    child.stderr?.on('data', (d: Buffer) => channel.append(d.toString()));
-    child.on('error', () => resolve(false));
-    child.on('close', (code) => {
-      if (code) {
-        channel.appendLine(`\n[Build failed] exit code ${code}`);
-      }
-      resolve(code === 0);
-    });
-  });
-}
+import { blockedByUntrustedPath } from '../util/trust';
 
 /** Ensure the extension that provides a debug adapter is installed. */
 async function ensureExtension(id: string): Promise<boolean> {
@@ -55,6 +30,44 @@ async function ensureExtension(id: string): Promise<boolean> {
   return vscode.extensions.getExtension(id) !== undefined;
 }
 
+/**
+ * A `launch.json` configuration whose `program` resolves to `uri`, when the
+ * user prefers their own debug configs over the generated one (#1195).
+ */
+function matchingLaunchConfig(
+  uri: vscode.Uri,
+  folder: vscode.WorkspaceFolder | undefined,
+): vscode.DebugConfiguration | undefined {
+  const prefer = vscode.workspace
+    .getConfiguration('rundebug')
+    .get<boolean>('preferLaunchConfig', false);
+  if (!prefer) {
+    return undefined;
+  }
+  const configs =
+    vscode.workspace
+      .getConfiguration('launch', folder?.uri)
+      .get<vscode.DebugConfiguration[]>('configurations') ?? [];
+  const target = path.normalize(uri.fsPath);
+  const root = folder?.uri.fsPath ?? path.dirname(uri.fsPath);
+  const substitute = (value: string): string =>
+    value
+      .replace(/\$\{file\}/g, uri.fsPath)
+      .replace(/\$\{relativeFile\}/g, path.relative(root, uri.fsPath))
+      .replace(/\$\{fileBasename\}/g, path.basename(uri.fsPath))
+      .replace(
+        /\$\{fileBasenameNoExtension\}/g,
+        path.basename(uri.fsPath, path.extname(uri.fsPath)),
+      )
+      .replace(/\$\{fileDirname\}/g, path.dirname(uri.fsPath))
+      .replace(/\$\{workspaceFolder\}/g, root);
+  return configs.find(
+    (c) =>
+      typeof c.program === 'string' &&
+      path.normalize(substitute(c.program)) === target,
+  );
+}
+
 interface DebugOpts {
   languageId?: string;
   name?: string;
@@ -70,24 +83,39 @@ export async function debugUri(
   uri: vscode.Uri,
   opts: DebugOpts = {},
 ): Promise<void> {
+  if (blockedByUntrustedPath(uri)) {
+    return;
+  }
   await vscode.window.activeTextEditor?.document.save();
 
-  const ext = path.extname(uri.fsPath);
-  const runner =
-    (opts.languageId ? runnerForLanguageId(opts.languageId) : undefined) ??
-    runnerForExtension(ext);
+  // Prefer the user's own launch.json config for this file, when opted in.
+  const launchFolder = workspaceFolderForUri(uri);
+  const launchConfig = matchingLaunchConfig(uri, launchFolder);
+  if (launchConfig) {
+    await vscode.debug.startDebugging(launchFolder, launchConfig);
+    return;
+  }
 
-  const runtimeName = runner
-    ? (opts.runtime ??
-      vscode.workspace
-        .getConfiguration('rundebug')
-        .get<string>(`runtime.${runner.id}`))
-    : undefined;
-  const variant = runner ? runtimeFor(runner, runtimeName) : undefined;
-
-  const template: DebugTemplate | undefined = variant?.debug;
+  let selection = resolveRuntimeSelection(
+    uri.fsPath,
+    opts.languageId,
+    opts.runtime,
+  );
+  let template: DebugTemplate | undefined = selection.variant?.debug;
+  // An unmatched file falls back to the configured defaultLanguage, mirroring
+  // the run resolver so a default applies to both Run and Debug.
+  if (!template && !selection.runner && !opts.runtime) {
+    const fallback = resolveDefaultLanguageSelection(uri.fsPath);
+    if (fallback?.selection.variant?.debug) {
+      selection = fallback.selection;
+      template = fallback.selection.variant.debug;
+    }
+  }
   if (!template) {
-    const label = variant?.label ?? runner?.label ?? path.basename(uri.fsPath);
+    const label =
+      selection.variant?.label ??
+      selection.runner?.label ??
+      path.basename(uri.fsPath);
     void vscode.window.showWarningMessage(
       `Run/Debug: debugging isn't available for the ${label} runtime — switch runtime or use Run.`,
     );
@@ -105,7 +133,7 @@ export async function debugUri(
 
   // Compiled languages build a debug binary first; abort if the build fails.
   if (template.compile) {
-    const ok = await runCompile(template.compile(ctx), ctx.fileDirname);
+    const ok = await runBuildCommand(template.compile(ctx), ctx.fileDirname);
     if (!ok) {
       void vscode.window.showErrorMessage(
         'Run/Debug: build failed — see the "Run/Debug Build" output.',
@@ -126,12 +154,8 @@ export async function debugUri(
     ...(opts.env ? { env: opts.env } : {}),
   };
 
-  // Native Node TS execution needs the type-stripping flag passed to the runtime.
-  if (runner?.id === 'typescript' && (runtimeName ?? runner.defaultRuntime) === 'node') {
-    const flag = nodeTypeStrippingFlag();
-    if (flag) {
-      debugConfig.runtimeArgs = [flag, ...(debugConfig.runtimeArgs ?? [])];
-    }
+  if (!(await prepareDebugConfiguration(selection, ctx, debugConfig))) {
+    return;
   }
 
   const started = await vscode.debug.startDebugging(folder, debugConfig);
