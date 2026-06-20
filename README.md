@@ -61,9 +61,46 @@ npm run vsix       # build a .vsix
 
 ## Publish
 
+The same VSIX publishes to both registries. Build it once:
+
 ```bash
-npm run publish:vsce   # VS Code Marketplace
-npm run publish:ovsx   # Open VSX (Cursor, Windsurf, VSCodium, Gitpod, …)
+npm run vsix           # produces rundebug-<version>.vsix
+```
+
+### VS Code Marketplace (publisher: `jagreehal`)
+
+Either upload the `.vsix` by hand at the [Marketplace management page](https://marketplace.visualstudio.com/manage)
+(**+ New extension → Visual Studio Code**), or publish from the CLI with a
+[Personal Access Token](https://learn.microsoft.com/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate):
+
+```bash
+export VSCE_PAT=<azure-devops-token>
+npm run publish:vsce   # vsce publish --no-dependencies
+```
+
+`package.json` `publisher` **must** equal `jagreehal`, or the upload is rejected.
+
+### Open VSX (Cursor, Windsurf, VSCodium, Gitpod, …)
+
+`ovsx` reads the token from `OVSX_PAT`, so it never appears on a command line:
+
+```bash
+export OVSX_PAT=<open-vsx-token>
+
+npx ovsx create-namespace jagreehal   # one-time; skip if it already exists
+npx ovsx publish rundebug-0.1.0.vsix  # or: npm run publish:ovsx
+```
+
+Lands at `https://open-vsx.org/extension/jagreehal/rundebug`.
+
+### Cutting a release
+
+Bump, tag, and push — the `release.yml` workflow packages the VSIX and publishes
+to both registries (needs `VSCE_PAT` and `OVSX_PAT` repo secrets):
+
+```bash
+npm version patch      # e.g. 0.1.0 -> 0.1.1, creates a v* tag
+git push --follow-tags
 ```
 
 ## License
