@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.1
+
+- **~50 languages**, closing Code Runner parity gaps (F#, .NET projects, V, Raku, Ring, CUDA). Fixed the duplicate `kotlin` runner that ran `.kts` scripts as a jar build.
+- **Workspace Trust**: an untrusted workspace can no longer execute code through its own `executorMap`/`defaultLanguage`/`cwd` settings, a committed `.vscode/rundebug.json`, or shebang lines, and refuses paths that could break out of shell quoting. Closes the class of bug behind CVE-2025-65715.
+- **Python Run** uses the interpreter the Python extension selected (venv/conda), matching Debug. Toggle with `rundebug.python.useSelectedInterpreter`.
+- New settings: `rundebug.compiledOutputDirectory` (build binaries elsewhere), `rundebug.preferLaunchConfig` (reuse a matching `launch.json` config), `rundebug.showRunActionsForUnsupportedFiles` (hide the actions on files with no runner).
+- `executorMapByGlob` matches the workspace-relative path, not just the file name.
+- Per-file watch picker; terminal first-character race fix; collapse a duplicate run within 250ms.
+- Tooling moved to pnpm + Node 24, with CI running the headless and VS Code integration suites.
+
+## 0.1.0
 
 Initial scaffold.
 
