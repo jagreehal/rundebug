@@ -1,22 +1,25 @@
 # Run/Debug Configurations
 
-One-click **Run** *and* **Debug** for any file, plus **JetBrains-style run configurations** with a GUI — no `launch.json` wrangling. A modern take on the run-a-file workflow, with the debug power you expect from WebStorm/IntelliJ, for VS Code, Cursor, Windsurf and VSCodium.
+One-click **Run** *and* **Debug** for any file, plus **JetBrains-style run configurations** with a GUI. No `launch.json` to hand-write. Works in VS Code, Cursor, Windsurf, and VSCodium.
 
-> Status: early scaffold (0.1.0). Run + Debug + GUI configs are wired; languages and debuggers are being expanded.
+> Status: early release (0.1.0). Run, Debug, and the GUI configs work today, across ~50 languages.
 
 ## Why
 
-[Code Runner](https://marketplace.visualstudio.com/items?itemName=formulahendry.code-runner) (40M+ installs) only *runs* a file — no breakpoints, no per-project configs, no GUI — and is effectively unmaintained (700+ open issues). VS Code's built-in `launch.json` debugs well but is JSON-heavy. Run/Debug Configurations closes the gap: the simplicity of Code Runner, the run/debug ergonomics of JetBrains.
+[Code Runner](https://marketplace.visualstudio.com/items?itemName=formulahendry.code-runner) (40M+ installs) runs a file but can't debug it, and it ships an unpatched remote-code-execution bug ([CVE-2025-65715](https://nvd.nist.gov/vuln/detail/CVE-2025-65715)) among its 700+ open issues. VS Code's `launch.json` debugs well but means writing JSON by hand. Run/Debug Configurations gives you both: one-click runs and real breakpoints, set up from a GUI.
 
 ## Features
 
-- **Run File** — `ctrl+alt+n`, the editor title ▶ button, or the context menu. 20+ languages out of the box.
-- **Debug File** — `ctrl+alt+d`. Delegates to VS Code's debug engine with the right adapter (Node/JS/TS, Bun, Python, Go, and **Rust/C/C++** via CodeLLDB — compiled with debug symbols first), auto-prompting to install the debugger extension if missing.
-- **Watch & Re-run** — `ctrl+alt+w` (eye icon in the title bar) re-runs the file on every save, with a status-bar indicator and one-click stop.
-- **Run Selection** — execute just the highlighted snippet.
-- **Run Configurations** — a sidebar list with a GUI editor: name, target file, run/debug mode, args, working directory, and an environment-variable table. Saved to `.vscode/rundebug.json` so they're shareable and committable. No manual JSON.
-- **Promote file → config** — right-click → *Save Current File as Run Configuration*: name it, pick run/debug, done (with an *Edit* shortcut to fine-tune).
-- **Native Node TypeScript** — pick `node` as the TS runtime to run/debug `.ts` with no extra tooling (Node 22.6+). `rundebug.node.typeStripping` controls the flag (`transform` handles enums/namespaces).
+- **Run File**: `ctrl+alt+n`, the editor title ▶ button, or the context menu. ~50 built-in languages across scripting, compiled, and CLI-first runtimes (JS/TS, Python, Go, Rust, C/C++, Java, Ruby, PHP, Swift, Kotlin, Zig, Gleam, F#, .NET projects, V, Raku, CUDA, and more).
+- **Debug File**: `ctrl+alt+d`. Hands off to VS Code's debug engine with the right adapter (Node/JS/TS, Bun, Python via debugpy, Go, and **Rust/C/C++/Objective-C/D/Pascal/Fortran/CUDA** via CodeLLDB, compiled with debug symbols first), and offers to install the debugger extension if you don't have it. Already keep a `launch.json`? Set `rundebug.preferLaunchConfig` to reuse a matching config.
+- **Watch & Re-run**: `ctrl+alt+w` (eye icon in the title bar) re-runs the file on every save and shows a status-bar indicator. Stop one watch by pressing `ctrl+alt+w` again, pick which to stop when several run, or *Stop All Watches*.
+- **Run Selection**: run just the highlighted snippet.
+- **Run Configurations**: a sidebar list with a GUI editor for the name, target file, run/debug mode, args, working directory, and environment variables. It saves to `.vscode/rundebug.json`, so you can commit and share it. No JSON to write.
+- **Promote file → config**: right-click *Save Current File as Run Configuration*, name it, pick run or debug. An *Edit* shortcut fine-tunes the rest.
+- **Python that respects your venv**: Run uses the interpreter the Python extension selected (virtualenv/conda), the same one Debug and IntelliSense use, so you skip the activate step. Toggle with `rundebug.python.useSelectedInterpreter`.
+- **Native Node TypeScript**: pick `node` as the TS runtime to run and debug `.ts` with no extra tooling (Node 22.6+). `rundebug.node.typeStripping` sets the flag (`transform` handles enums and namespaces).
+- **Tidy compiled output**: point `rundebug.compiledOutputDirectory` at a build folder to keep binaries out of your source tree.
+- **Safe by default**: it honours [Workspace Trust](#workspace-trust), so a repo you just cloned can't run code through its own settings, saved configs, or shebang lines.
 
 ## Settings
 
@@ -25,38 +28,59 @@ One-click **Run** *and* **Debug** for any file, plus **JetBrains-style run confi
 | `rundebug.runInTerminal` | `true` | Run in the integrated terminal (off = output channel). |
 | `rundebug.saveAllOnRun` | `true` | Save the active file before running. |
 | `rundebug.clearPreviousOutput` | `false` | Clear before each run. |
-| `rundebug.respectShebang` | `true` | Honour a `#!` line over the language default. |
+| `rundebug.respectShebang` | `true` | Honour a `#!` line over the language default (trusted workspaces only). |
+| `rundebug.executorMapByGlob` | `{ "pom.xml": "cd {fileDirname} && mvn clean package" }` | Override run commands by glob, matched against the file name **or** workspace-relative path (e.g. `tests/**/*.py`). |
 | `rundebug.runtime.javascript` | `node` | Runtime for JS: `node` · `bun` · `deno`. |
 | `rundebug.runtime.typescript` | `tsx` | Runtime for TS/TSX: `tsx` · `bun` · `ts-node` · `deno` · `node`. |
 | `rundebug.runtime.python` | `python3` | Runtime for Python: `python3` · `python` · `uv`. |
 | `rundebug.node.typeStripping` | `transform` | Flag for the TS `node` runtime: `transform` · `strip` · `none` (Node 22.6+). |
 | `rundebug.executorMap` | `{}` | Full per-language command override (wins over runtime), e.g. `{ "javascript": "bun {file}" }`. Placeholders: `{file} {fileBasename} {fileBasenameNoExt} {fileDirname} {workspaceFolder} {relativeFile}`. |
+| `rundebug.executorMapByFileExtension` | `{}` | Override run commands by exact file extension, e.g. `.csproj` or `.kt`. |
+| `rundebug.languageIdToFileExtensionMap` | `{ "typescriptreact": ".tsx", ... }` | Map VS Code language ids to extensions when the file extension is missing or ambiguous. |
+| `rundebug.defaultLanguage` | `""` | Fallback language id when no runner or override matches a file. |
+| `rundebug.cwd` | `""` | Global default working directory for run commands. |
+| `rundebug.fileDirectoryAsCwd` | `true` | Use the file’s directory as cwd when no explicit cwd is set. |
+| `rundebug.python.useSelectedInterpreter` | `true` | Run Python with the interpreter the Python extension selected (venv/conda). |
+| `rundebug.compiledOutputDirectory` | `""` | Directory for built binaries (C/C++/Rust/Go/…); empty = next to the source. |
+| `rundebug.preferLaunchConfig` | `false` | When debugging, reuse a `launch.json` config whose `program` matches the file. |
+| `rundebug.showRunActionsForUnsupportedFiles` | `true` | Show the Run/Debug actions on every file; off = only files with a known runner. |
 
-Runtime dropdowns cover the common case (pick `bun`/`deno`/`uv` from a menu, and **debug** follows the choice too). `executorMap` is the escape hatch for anything custom.
+Pick `bun`, `deno`, or `uv` from a dropdown and Debug follows the same choice. For anything the dropdowns miss, `executorMap` and the glob and extension overrides take a raw command.
 
 ### Use any runtime you want
 
 Three layers, most specific wins:
 
-1. **Per run-configuration** — each saved config has a **Runtime** field (`tsx`, `bun`, `deno`, `uv`, `node`, …) and a **Custom command** field (e.g. `bun --hot {file}`) right in the GUI editor. Different configs for the same file can use different runtimes.
-2. **Per language (workspace/user)** — the `rundebug.runtime.*` dropdowns set the default for every file of that language.
-3. **`rundebug.executorMap`** — a raw command per language for anything not covered above.
+1. **Per run-configuration**: each saved config has a **Runtime** field (`tsx`, `bun`, `deno`, `uv`, `node`, …) and a **Custom command** field (e.g. `bun --hot {file}`) in the GUI editor. Two configs for the same file can use different runtimes.
+2. **Per language (workspace/user)**: the `rundebug.runtime.*` dropdowns set the default for every file of that language.
+3. **`rundebug.executorMap`**: a raw command per language for anything the layers above miss.
 
-Run resolution order: custom command → per-config runtime → `executorMap` → shebang → language-default runtime.
+Run resolution order: custom command → per-config runtime → `executorMap` → shebang → `executorMapByGlob` → built-in runner / `executorMapByFileExtension` → `defaultLanguage`.
+
+## Workspace Trust
+
+Run/Debug runs shell commands, so it follows VS Code's [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust). Open an **untrusted** workspace and it runs your code with the built-in runners and your **user**-level settings only. It ignores everything a hostile repo controls:
+
+- workspace run commands: `executorMap`, the glob and extension maps, `defaultLanguage`, `cwd`, `compiledOutputDirectory`;
+- a committed `.vscode/rundebug.json`'s custom `command`, `args`, `cwd`, and `env`;
+- shebang lines;
+- file paths with characters that could break out of shell quoting.
+
+Trust the workspace to turn all of that back on. This closes the class of bug behind [CVE-2025-65715](https://nvd.nist.gov/vuln/detail/CVE-2025-65715).
 
 ## Develop
 
 ```bash
-npm install
-npm run watch      # esbuild in watch mode
+pnpm install
+pnpm watch         # esbuild in watch mode
 # press F5 in VS Code to launch the Extension Development Host
 ```
 
 ```bash
-npm run typecheck  # tsc --noEmit
-npm run test:unit  # fast, headless registry/runtime tests (mocha)
-npm test           # full integration suite in a real VS Code host (@vscode/test-cli)
-npm run vsix       # build a .vsix
+pnpm typecheck     # tsc --noEmit
+pnpm test:unit     # fast, headless registry/runtime tests (mocha)
+pnpm test          # full integration suite in a real VS Code host (@vscode/test-cli)
+pnpm vsix          # build a .vsix
 ```
 
 ## Publish
@@ -64,7 +88,7 @@ npm run vsix       # build a .vsix
 The same VSIX publishes to both registries. Build it once:
 
 ```bash
-npm run vsix           # produces rundebug-<version>.vsix
+pnpm vsix              # produces rundebug-<version>.vsix
 ```
 
 ### VS Code Marketplace (publisher: `jagreehal`)
@@ -75,7 +99,7 @@ Either upload the `.vsix` by hand at the [Marketplace management page](https://m
 
 ```bash
 export VSCE_PAT=<azure-devops-token>
-npm run publish:vsce   # vsce publish --no-dependencies
+pnpm publish:vsce      # vsce publish --no-dependencies
 ```
 
 `package.json` `publisher` **must** equal `jagreehal`, or the upload is rejected.
@@ -88,20 +112,24 @@ npm run publish:vsce   # vsce publish --no-dependencies
 export OVSX_PAT=<open-vsx-token>
 
 npx ovsx create-namespace jagreehal   # one-time; skip if it already exists
-npx ovsx publish rundebug-0.1.0.vsix  # or: npm run publish:ovsx
+npx ovsx publish rundebug-0.1.0.vsix  # or: pnpm publish:ovsx
 ```
 
 Lands at `https://open-vsx.org/extension/jagreehal/rundebug`.
 
 ### Cutting a release
 
-Bump, tag, and push — the `release.yml` workflow packages the VSIX and publishes
-to both registries (needs `VSCE_PAT` and `OVSX_PAT` repo secrets):
+Bump, tag, and push. The `release.yml` workflow packages the VSIX, publishes to
+**Open VSX** (needs the `OVSX_PAT` repo secret), and attaches the `.vsix` to the
+GitHub release:
 
 ```bash
-npm version patch      # e.g. 0.1.0 -> 0.1.1, creates a v* tag
+pnpm version patch     # e.g. 0.1.0 -> 0.1.1, creates a v* tag
 git push --follow-tags
 ```
+
+The **VS Code Marketplace** upload stays manual: download the `.vsix` from the
+GitHub release and upload it at the [Marketplace management page](https://marketplace.visualstudio.com/manage).
 
 ## License
 

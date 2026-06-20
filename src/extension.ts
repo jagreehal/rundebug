@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import { ConfigStore } from './config/store';
 import type { RunConfig, RunMode } from './config/types';
 import { debugUri } from './debug/debugger';
-import { disposeRunner, runUri, stopRunning } from './run/runner';
+import { canRun, disposeRunner, runUri, stopRunning } from './run/runner';
 import { WatchManager } from './run/watch';
 import { ConfigTreeProvider } from './views/configTree';
 import { openConfigEditor } from './views/editorWebview';
@@ -45,19 +45,42 @@ async function executeConfig(cfg: RunConfig, mode: RunMode): Promise<void> {
     );
     return;
   }
+  // `.vscode/rundebug.json` is committed (attacker-controlled in a hostile
+  // repo), so its command/args/cwd/env fields must not run untrusted.
+  const trusted = vscode.workspace.isTrusted;
   const opts = {
     ...(cfg.languageId ? { languageId: cfg.languageId } : {}),
     ...(cfg.runtime ? { runtime: cfg.runtime } : {}),
-    ...(cfg.args ? { args: cfg.args } : {}),
-    ...(cfg.cwd ? { cwd: cfg.cwd } : {}),
-    ...(cfg.env ? { env: cfg.env } : {}),
+    ...(trusted && cfg.args ? { args: cfg.args } : {}),
+    ...(trusted && cfg.cwd ? { cwd: cfg.cwd } : {}),
+    ...(trusted && cfg.env ? { env: cfg.env } : {}),
   };
   if (mode === 'debug') {
     // A custom command can't drive the debug adapter; runtime still applies.
     await debugUri(uri, opts);
   } else {
-    await runUri(uri, { ...opts, ...(cfg.command ? { command: cfg.command } : {}) });
+    await runUri(uri, {
+      ...opts,
+      ...(trusted && cfg.command ? { command: cfg.command } : {}),
+    });
   }
+}
+
+/**
+ * Drive the `when`-clause context keys that decide whether the run actions
+ * appear: `rundebug.showAll` mirrors the setting, `rundebug.hasRunner` reflects
+ * whether the active file is runnable.
+ */
+function syncRunActionContext(): void {
+  const showAll = vscode.workspace
+    .getConfiguration('rundebug')
+    .get<boolean>('showRunActionsForUnsupportedFiles', true);
+  void vscode.commands.executeCommand('setContext', 'rundebug.showAll', showAll);
+  const editor = vscode.window.activeTextEditor;
+  const hasRunner = editor
+    ? canRun(editor.document.uri, editor.document.languageId)
+    : false;
+  void vscode.commands.executeCommand('setContext', 'rundebug.hasRunner', hasRunner);
 }
 
 export async function activate(
@@ -65,6 +88,16 @@ export async function activate(
 ): Promise<void> {
   const store = new ConfigStore();
   await store.load();
+
+  syncRunActionContext();
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => syncRunActionContext()),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('rundebug')) {
+        syncRunActionContext();
+      }
+    }),
+  );
 
   const tree = new ConfigTreeProvider(store);
   context.subscriptions.push(
@@ -97,7 +130,12 @@ export async function activate(
       return;
     }
     const text = editor.document.getText(editor.selection);
-    const ext = path.extname(editor.document.fileName) || '.txt';
+    const configuredExt = vscode.workspace
+      .getConfiguration('rundebug')
+      .get<Record<string, string>>('languageIdToFileExtensionMap', {})[
+      editor.document.languageId
+    ];
+    const ext = path.extname(editor.document.fileName) || configuredExt || '.txt';
     const tmp = path.join(os.tmpdir(), `rundebug-snippet-${Date.now()}${ext}`);
     await fs.promises.writeFile(tmp, text, 'utf8');
     await runUri(vscode.Uri.file(tmp), {
@@ -117,6 +155,26 @@ export async function activate(
     }
   });
   reg('rundebug.stopAllWatches', () => watcher.stopAll());
+  reg('rundebug.stopWatch', async () => {
+    const uris = watcher.list();
+    if (uris.length === 0) {
+      void vscode.window.showInformationMessage(
+        'Run/Debug: no files are being watched.',
+      );
+      return;
+    }
+    const picks = await vscode.window.showQuickPick(
+      uris.map((uri) => ({
+        label: `$(eye) ${uri.path.split('/').pop() ?? uri.fsPath}`,
+        description: vscode.workspace.asRelativePath(uri),
+        uri,
+      })),
+      { placeHolder: 'Select watches to stop', canPickMany: true },
+    );
+    for (const p of picks ?? []) {
+      watcher.stop(p.uri);
+    }
+  });
 
   reg('rundebug.newConfig', () => openConfigEditor(store));
   reg('rundebug.editConfig', (cfg: RunConfig) => openConfigEditor(store, cfg));

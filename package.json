@@ -8,6 +8,7 @@
   "engines": {
     "vscode": "^1.90.0"
   },
+  "packageManager": "pnpm@11.5.3",
   "categories": [
     "Debuggers",
     "Programming Languages",
@@ -30,6 +31,12 @@
   "activationEvents": [
     "onStartupFinished"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In untrusted workspaces, Run/Debug ignores workspace-defined run commands (executorMap, glob/extension maps, defaultLanguage, cwd), saved .vscode/rundebug.json command/args/cwd/env, and shebang lines, and refuses files whose path could break out of shell quoting. Only the built-in language runners apply."
+    }
+  },
   "contributes": {
     "commands": [
       {
@@ -59,6 +66,10 @@
       {
         "command": "rundebug.stopAllWatches",
         "title": "Run/Debug: Stop All Watches"
+      },
+      {
+        "command": "rundebug.stopWatch",
+        "title": "Run/Debug: Stop Watching File…"
       },
       {
         "command": "rundebug.newConfig",
@@ -95,24 +106,24 @@
         {
           "command": "rundebug.runFile",
           "group": "navigation@1",
-          "when": "resourceScheme == file"
+          "when": "resourceScheme == file && (rundebug.hasRunner || rundebug.showAll)"
         },
         {
           "command": "rundebug.debugFile",
           "group": "navigation@2",
-          "when": "resourceScheme == file"
+          "when": "resourceScheme == file && (rundebug.hasRunner || rundebug.showAll)"
         },
         {
           "command": "rundebug.watchFile",
           "group": "navigation@3",
-          "when": "resourceScheme == file"
+          "when": "resourceScheme == file && (rundebug.hasRunner || rundebug.showAll)"
         }
       ],
       "editor/context": [
         {
           "command": "rundebug.runFile",
           "group": "rundebug@1",
-          "when": "resourceScheme == file"
+          "when": "resourceScheme == file && (rundebug.hasRunner || rundebug.showAll)"
         },
         {
           "command": "rundebug.runSelection",
@@ -122,7 +133,7 @@
         {
           "command": "rundebug.debugFile",
           "group": "rundebug@3",
-          "when": "resourceScheme == file"
+          "when": "resourceScheme == file && (rundebug.hasRunner || rundebug.showAll)"
         },
         {
           "command": "rundebug.saveFromCurrentFile",
@@ -232,10 +243,24 @@
           "default": true,
           "description": "Honour a #! shebang line when present instead of the language default."
         },
+        "rundebug.executorMapByGlob": {
+          "type": "object",
+          "default": {
+            "pom.xml": "cd {fileDirname} && mvn clean package"
+          },
+          "description": "Override run commands by filename glob. Example: { \"pom.xml\": \"cd {fileDirname} && mvn clean package\" }.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
         "rundebug.runtime.javascript": {
           "type": "string",
           "default": "node",
-          "enum": ["node", "bun", "deno"],
+          "enum": [
+            "node",
+            "bun",
+            "deno"
+          ],
           "enumDescriptions": [
             "node <file>",
             "bun <file>",
@@ -246,7 +271,13 @@
         "rundebug.runtime.typescript": {
           "type": "string",
           "default": "tsx",
-          "enum": ["tsx", "bun", "ts-node", "deno", "node"],
+          "enum": [
+            "tsx",
+            "bun",
+            "ts-node",
+            "deno",
+            "node"
+          ],
           "enumDescriptions": [
             "npx tsx <file>",
             "bun <file>",
@@ -259,7 +290,11 @@
         "rundebug.runtime.python": {
           "type": "string",
           "default": "python3",
-          "enum": ["python3", "python", "uv"],
+          "enum": [
+            "python3",
+            "python",
+            "uv"
+          ],
           "enumDescriptions": [
             "python3 -u <file>",
             "python -u <file>",
@@ -270,7 +305,11 @@
         "rundebug.node.typeStripping": {
           "type": "string",
           "default": "transform",
-          "enum": ["transform", "strip", "none"],
+          "enum": [
+            "transform",
+            "strip",
+            "none"
+          ],
           "enumDescriptions": [
             "--experimental-transform-types (full TS, incl. enums & namespaces)",
             "--experimental-strip-types (erasable syntax only)",
@@ -285,21 +324,82 @@
           "additionalProperties": {
             "type": "string"
           }
+        },
+        "rundebug.executorMapByFileExtension": {
+          "type": "object",
+          "default": {
+            ".kt": "cd {fileDirname} && kotlinc {fileBasename} -include-runtime -d {fileBasenameNoExt}.jar && java -jar {fileBasenameNoExt}.jar",
+            ".csproj": "dotnet run --project {file}",
+            ".fsproj": "dotnet run --project {file}"
+          },
+          "description": "Override run commands by file extension. Example: { \".kt\": \"kotlinc -script {file}\" }.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "rundebug.languageIdToFileExtensionMap": {
+          "type": "object",
+          "default": {
+            "bat": ".bat",
+            "powershell": ".ps1",
+            "typescript": ".ts",
+            "typescriptreact": ".tsx"
+          },
+          "description": "Map VS Code language ids to extensions when a file extension is missing or ambiguous.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "rundebug.defaultLanguage": {
+          "type": "string",
+          "default": "",
+          "description": "Fallback language id to use when no runner or override matches the file."
+        },
+        "rundebug.cwd": {
+          "type": "string",
+          "default": "",
+          "description": "Default working directory for run commands. Absolute paths are used as-is; relative paths resolve from the workspace folder."
+        },
+        "rundebug.fileDirectoryAsCwd": {
+          "type": "boolean",
+          "default": true,
+          "description": "When no per-run cwd or global cwd is set, use the file's directory as the working directory; otherwise use the workspace folder."
+        },
+        "rundebug.python.useSelectedInterpreter": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run Python files with the interpreter selected by the Python extension (its virtual environment / conda env), instead of a bare python3. Debugging already uses it."
+        },
+        "rundebug.compiledOutputDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Directory for binaries built from compiled languages (C, C++, Rust, Go, etc.). Absolute paths are used as-is; relative paths resolve from the workspace folder. Empty means alongside the source file."
+        },
+        "rundebug.preferLaunchConfig": {
+          "type": "boolean",
+          "default": false,
+          "description": "When debugging, if a launch.json configuration's program resolves to the current file, start that configuration instead of the generated one."
+        },
+        "rundebug.showRunActionsForUnsupportedFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Run/Debug editor-title and context-menu actions for every file. When off, they appear only for files with a known runner or override."
         }
       }
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run package",
+    "vscode:prepublish": "pnpm package",
+    "check": "pnpm lint && pnpm typecheck && pnpm test:unit",
     "compile": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "package": "npm run typecheck && node esbuild.mjs --production",
+    "package": "pnpm typecheck && node esbuild.mjs --production",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "compile-tests": "tsc -p ./",
-    "pretest": "npm run compile && npm run compile-tests",
+    "pretest": "pnpm check",
     "test": "vscode-test",
-    "test:unit": "npm run compile-tests && mocha out/test/registry.test.js",
+    "test:unit": "pnpm compile-tests && mocha out/test/registry.test.js out/test/selectCommand.test.js",
     "vsix": "vsce package --no-dependencies",
     "publish:vsce": "vsce publish --no-dependencies",
     "publish:ovsx": "ovsx publish --no-dependencies"
@@ -318,5 +418,8 @@
     "mocha": "^10.7.0",
     "ovsx": "^0.10.0",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "minimatch": "^10.2.5"
   }
 }

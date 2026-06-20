@@ -1,0 +1,9 @@
+# Build-script approvals (pnpm 11). Decided explicitly so `pnpm run` doesn't
+# block on undecided builds.
+# - esbuild: needed to bundle the extension.
+# - keytar / vsce-sign: native publish-only deps (keytar needs libsecret to
+#   compile); skipped so CI/install doesn't need extra system libraries.
+allowBuilds:
+  '@vscode/vsce-sign': false
+  esbuild: true
+  keytar: false
