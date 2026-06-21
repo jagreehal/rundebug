@@ -1,15 +1,18 @@
 import * as vscode from 'vscode';
+import { runFileTests } from '../testing/run';
 import { runUri, type RunOptions } from './runner';
 
 interface Watch {
   uri: vscode.Uri;
-  opts: RunOptions;
+  /** What to re-run when the file is saved (run the file, or its tests). */
+  action: () => void | Promise<void>;
   disposable: vscode.Disposable;
 }
 
 /**
- * Re-runs a file whenever it is saved. One watch per file; a status-bar item
- * reflects the most recently started watch and offers a one-click stop.
+ * Re-runs a file (or its tests) whenever it is saved. One watch per file; a
+ * status-bar item reflects the most recently started watch and offers a
+ * one-click stop.
  */
 export class WatchManager {
   private readonly watches = new Map<string, Watch>();
@@ -23,8 +26,18 @@ export class WatchManager {
     this.status.command = 'rundebug.stopAllWatches';
   }
 
-  /** Toggle watching for a uri; returns true if now watching. */
+  /** Toggle watching a uri, re-running the whole file on save. */
   toggle(uri: vscode.Uri, opts: RunOptions = {}): boolean {
+    return this.start(uri, () => runUri(uri, opts));
+  }
+
+  /** Toggle watching a uri, re-running its tests on save. */
+  toggleTests(uri: vscode.Uri, languageId?: string): boolean {
+    return this.start(uri, () => runFileTests(uri, languageId));
+  }
+
+  /** Start (or stop, if already watching) a watch with the given action. */
+  private start(uri: vscode.Uri, action: () => void | Promise<void>): boolean {
     const key = uri.toString();
     if (this.watches.has(key)) {
       this.stop(uri);
@@ -33,12 +46,12 @@ export class WatchManager {
 
     const disposable = vscode.workspace.onDidSaveTextDocument((doc) => {
       if (doc.uri.toString() === key) {
-        void runUri(uri, opts);
+        void action();
       }
     });
-    this.watches.set(key, { uri, opts, disposable });
+    this.watches.set(key, { uri, action, disposable });
     this.render();
-    void runUri(uri, opts); // run immediately on start
+    void action(); // run immediately on start
     return true;
   }
 
