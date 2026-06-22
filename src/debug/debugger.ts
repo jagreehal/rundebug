@@ -11,7 +11,7 @@ import { contextForUri, workspaceFolderForUri } from '../util/context';
 import { blockedByUntrustedPath } from '../util/trust';
 
 /** Ensure the extension that provides a debug adapter is installed. */
-async function ensureExtension(id: string): Promise<boolean> {
+export async function ensureExtension(id: string): Promise<boolean> {
   if (vscode.extensions.getExtension(id)) {
     return true;
   }

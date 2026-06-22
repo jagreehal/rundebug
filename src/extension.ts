@@ -7,8 +7,32 @@ import type { RunConfig, RunMode } from './config/types';
 import { debugUri } from './debug/debugger';
 import { canRun, disposeRunner, runUri, stopRunning } from './run/runner';
 import { WatchManager } from './run/watch';
+import { TestCodeLensProvider, TEST_LENS_LANGUAGES } from './testing/codeLens';
+import { registerTestController } from './testing/controller';
+import { findTests, isTestFile, testAtLine } from './testing/discovery';
+import type { TestSelector } from './testing/frameworks';
+import { debugTest, runFileTests, runTest } from './testing/run';
 import { ConfigTreeProvider } from './views/configTree';
 import { openConfigEditor } from './views/editorWebview';
+
+/** The test the caret sits inside, in the active editor, with its suite path. */
+function testAtCursor():
+  | { uri: vscode.Uri; sel: TestSelector; languageId: string }
+  | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return undefined;
+  }
+  const tests = findTests(editor.document.getText(), editor.document.languageId);
+  const t = testAtLine(tests, editor.selection.active.line);
+  return t
+    ? {
+        uri: editor.document.uri,
+        sel: { name: t.name, ancestors: t.ancestors },
+        languageId: editor.document.languageId,
+      }
+    : undefined;
+}
 
 interface Target {
   uri: vscode.Uri;
@@ -81,6 +105,10 @@ function syncRunActionContext(): void {
     ? canRun(editor.document.uri, editor.document.languageId)
     : false;
   void vscode.commands.executeCommand('setContext', 'rundebug.hasRunner', hasRunner);
+  const isTest = editor
+    ? isTestFile(vscode.workspace.asRelativePath(editor.document.uri))
+    : false;
+  void vscode.commands.executeCommand('setContext', 'rundebug.isTestFile', isTest);
 }
 
 export async function activate(
@@ -175,6 +203,54 @@ export async function activate(
       watcher.stop(p.uri);
     }
   });
+
+  // --- Test integration: file tests, single-test run/debug, test watch. ---
+  reg('rundebug.runFileTests', async (uri?: vscode.Uri) => {
+    const t = resolveTarget(uri);
+    if (t) {
+      await runFileTests(t.uri, t.languageId);
+    }
+  });
+  reg('rundebug.watchTests', (uri?: vscode.Uri) => {
+    const t = resolveTarget(uri);
+    if (t) {
+      watcher.toggleTests(t.uri, t.languageId);
+    }
+  });
+  // runTest/debugTest carry (uri, selector) from a CodeLens; with no selector
+  // (palette, keybinding, or context menu) they fall back to the caret's test.
+  reg('rundebug.runTest', async (uri?: vscode.Uri, sel?: TestSelector) => {
+    if (uri && sel) {
+      await runTest(uri, sel);
+      return;
+    }
+    const at = testAtCursor();
+    if (at) {
+      await runTest(at.uri, at.sel, at.languageId);
+    } else {
+      void vscode.window.showInformationMessage('Run/Debug: no test at the cursor.');
+    }
+  });
+  reg('rundebug.debugTest', async (uri?: vscode.Uri, sel?: TestSelector) => {
+    if (uri && sel) {
+      await debugTest(uri, sel);
+      return;
+    }
+    const at = testAtCursor();
+    if (at) {
+      await debugTest(at.uri, at.sel, at.languageId);
+    } else {
+      void vscode.window.showInformationMessage('Run/Debug: no test at the cursor.');
+    }
+  });
+
+  context.subscriptions.push(
+    registerTestController(),
+    vscode.languages.registerCodeLensProvider(
+      TEST_LENS_LANGUAGES.map((language) => ({ language, scheme: 'file' })),
+      new TestCodeLensProvider(),
+    ),
+  );
 
   reg('rundebug.newConfig', () => openConfigEditor(store));
   reg('rundebug.editConfig', (cfg: RunConfig) => openConfigEditor(store, cfg));

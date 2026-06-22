@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- **Test Explorer**: tests appear in VS Code's native Testing panel with **Run**, **Debug**, and **Run with Coverage** profiles. Results are reported by process exit code; the tree nests by suite/class. Debug reports success only when a session actually launches (frameworks without debug support — e.g. cargo — and declined installs show *skipped*, not green).
+- **Framework detection**: Vitest / Jest / Mocha / `node:test` from your dependencies (defaulting to the zero-config `node:test`), plus pytest, go test, and cargo test by language. Pin one with `rundebug.testFramework`.
+- **CodeLenses**: **Run Test | Debug Test** above each test and **Run File Tests | Watch Tests** at the top of a test file. Run the test under the caret with `ctrl+alt+t`. Targeted runs use the full suite path (`path::Class::name` for pytest, the full title for JS runners) so duplicate leaf names are unambiguous.
+- **Coverage**: a coverage run loads the framework's `lcov` output straight into the editor's gutter via the native coverage API — no instrumentation of ours.
+- **Watch tests**: re-run a file's tests on every save, reusing the watch status bar.
+- `node:test` runs TypeScript via Node's built-in type stripping, or the project's `tsx` loader when present (which also handles JSX). New settings: `rundebug.testFramework`, `rundebug.testCodeLens`, `rundebug.testFileGlobs`, `rundebug.coverageFile`.
+
 ## 0.1.1
 
 - **~50 languages**, closing Code Runner parity gaps (F#, .NET projects, V, Raku, Ring, CUDA). Fixed the duplicate `kotlin` runner that ran `.kts` scripts as a jar build.

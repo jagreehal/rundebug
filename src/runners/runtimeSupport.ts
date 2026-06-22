@@ -157,7 +157,7 @@ async function ensureDebugPackage(
  * conda env, etc.), so Run uses the same environment as IntelliSense and Debug
  * instead of a bare `python3`. Returns undefined when unavailable or disabled.
  */
-async function selectedPythonInterpreter(
+export async function selectedPythonInterpreter(
   ctx: RunContext,
 ): Promise<string | undefined> {
   if (!config().get<boolean>('python.useSelectedInterpreter', true)) {

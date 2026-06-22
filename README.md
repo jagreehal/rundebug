@@ -13,6 +13,8 @@ One-click **Run** *and* **Debug** for any file, plus **JetBrains-style run confi
 - **Run File**: `ctrl+alt+n`, the editor title ▶ button, or the context menu. ~50 built-in languages across scripting, compiled, and CLI-first runtimes (JS/TS, Python, Go, Rust, C/C++, Java, Ruby, PHP, Swift, Kotlin, Zig, Gleam, F#, .NET projects, V, Raku, CUDA, and more).
 - **Debug File**: `ctrl+alt+d`. Hands off to VS Code's debug engine with the right adapter (Node/JS/TS, Bun, Python via debugpy, Go, and **Rust/C/C++/Objective-C/D/Pascal/Fortran/CUDA** via CodeLLDB, compiled with debug symbols first), and offers to install the debugger extension if you don't have it. Already keep a `launch.json`? Set `rundebug.preferLaunchConfig` to reuse a matching config.
 - **Watch & Re-run**: `ctrl+alt+w` (eye icon in the title bar) re-runs the file on every save and shows a status-bar indicator. Stop one watch by pressing `ctrl+alt+w` again, pick which to stop when several run, or *Stop All Watches*.
+- **Test Explorer, CodeLenses & coverage**: tests show up in VS Code's native Testing panel with **Run**, **Debug**, and **Run with Coverage** profiles. **Run Test | Debug Test** CodeLenses sit above each test, with **Run File Tests | Watch Tests** at the top of the file. Run a single test at the caret with `ctrl+alt+t`. The framework is detected per project — **Vitest, Jest, Mocha, `node:test`** (from your dependencies, defaulting to the zero-config `node:test`), plus **pytest, go test, cargo test** — or pin one with `rundebug.testFramework`. Coverage runs load the framework's `lcov` output straight into the editor's gutter, so no instrumentation of ours is involved.
+- **Watch tests**: the *Watch Tests* CodeLens (or `rundebug.watchTests`) re-runs a file's tests on every save, with the same status-bar indicator as file watch.
 - **Run Selection**: run just the highlighted snippet.
 - **Run Configurations**: a sidebar list with a GUI editor for the name, target file, run/debug mode, args, working directory, and environment variables. It saves to `.vscode/rundebug.json`, so you can commit and share it. No JSON to write.
 - **Promote file → config**: right-click *Save Current File as Run Configuration*, name it, pick run or debug. An *Edit* shortcut fine-tunes the rest.
@@ -44,6 +46,10 @@ One-click **Run** *and* **Debug** for any file, plus **JetBrains-style run confi
 | `rundebug.compiledOutputDirectory` | `""` | Directory for built binaries (C/C++/Rust/Go/…); empty = next to the source. |
 | `rundebug.preferLaunchConfig` | `false` | When debugging, reuse a `launch.json` config whose `program` matches the file. |
 | `rundebug.showRunActionsForUnsupportedFiles` | `true` | Show the Run/Debug actions on every file; off = only files with a known runner. |
+| `rundebug.testFramework` | `auto` | Test framework for the Test Explorer/CodeLenses: `auto` · `vitest` · `jest` · `mocha` · `node:test` · `pytest` · `go` · `cargo`. |
+| `rundebug.testCodeLens` | `true` | Show Run/Debug CodeLenses above tests and test files. |
+| `rundebug.testFileGlobs` | `["**/*.{test,spec}.{js,jsx,ts,tsx,cjs,mjs,cts,mts}", "**/*_test.go", "**/test_*.py", "**/*_test.py"]` | Globs the Test Explorer uses to discover test files (`node_modules` always excluded). |
+| `rundebug.coverageFile` | `coverage/lcov.info` | Workspace-relative lcov file loaded into the editor's coverage view after a coverage run. |
 
 Pick `bun`, `deno`, or `uv` from a dropdown and Debug follows the same choice. For anything the dropdowns miss, `executorMap` and the glob and extension overrides take a raw command.
 

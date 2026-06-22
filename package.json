@@ -2,7 +2,7 @@
   "name": "rundebug",
   "displayName": "Run/Debug Configurations",
   "description": "One-click run AND debug for any file, with JetBrains-style run configurations. No JSON wrangling.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "jagreehal",
   "license": "MIT",
   "engines": {
@@ -99,6 +99,26 @@
       {
         "command": "rundebug.saveFromCurrentFile",
         "title": "Run/Debug: Save Current File as Run Configuration"
+      },
+      {
+        "command": "rundebug.runFileTests",
+        "title": "Run/Debug: Run File Tests",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "rundebug.runTest",
+        "title": "Run/Debug: Run Test at Cursor",
+        "icon": "$(play)"
+      },
+      {
+        "command": "rundebug.debugTest",
+        "title": "Run/Debug: Debug Test at Cursor",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "rundebug.watchTests",
+        "title": "Run/Debug: Watch & Re-run Tests",
+        "icon": "$(eye-watch)"
       }
     ],
     "menus": {
@@ -117,6 +137,11 @@
           "command": "rundebug.watchFile",
           "group": "navigation@3",
           "when": "resourceScheme == file && (rundebug.hasRunner || rundebug.showAll)"
+        },
+        {
+          "command": "rundebug.runFileTests",
+          "group": "navigation@4",
+          "when": "resourceScheme == file && rundebug.isTestFile"
         }
       ],
       "editor/context": [
@@ -139,6 +164,16 @@
           "command": "rundebug.saveFromCurrentFile",
           "group": "rundebug@4",
           "when": "resourceScheme == file"
+        },
+        {
+          "command": "rundebug.runTest",
+          "group": "rundebugTest@1",
+          "when": "resourceScheme == file && rundebug.isTestFile"
+        },
+        {
+          "command": "rundebug.debugTest",
+          "group": "rundebugTest@2",
+          "when": "resourceScheme == file && rundebug.isTestFile"
         }
       ],
       "view/title": [
@@ -193,6 +228,12 @@
         "command": "rundebug.watchFile",
         "key": "ctrl+alt+w",
         "mac": "ctrl+alt+w",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "rundebug.runTest",
+        "key": "ctrl+alt+t",
+        "mac": "ctrl+alt+t",
         "when": "editorTextFocus"
       }
     ],
@@ -384,6 +425,54 @@
           "type": "boolean",
           "default": true,
           "description": "Show the Run/Debug editor-title and context-menu actions for every file. When off, they appear only for files with a known runner or override."
+        },
+        "rundebug.testFramework": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "vitest",
+            "jest",
+            "mocha",
+            "node:test",
+            "pytest",
+            "go",
+            "cargo"
+          ],
+          "enumDescriptions": [
+            "Detect from the project (dependencies for JS/TS, language otherwise)",
+            "Vitest",
+            "Jest",
+            "Mocha",
+            "Node's built-in node:test runner",
+            "pytest",
+            "go test",
+            "cargo test"
+          ],
+          "description": "Test framework used by the Test Explorer, CodeLenses and test commands. 'auto' detects per project."
+        },
+        "rundebug.testCodeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show Run/Debug CodeLenses above tests and at the top of test files."
+        },
+        "rundebug.testFileGlobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/*.{test,spec}.{js,jsx,ts,tsx,cjs,mjs,cts,mts}",
+            "**/*_test.go",
+            "**/test_*.py",
+            "**/*_test.py"
+          ],
+          "description": "Globs used by the Test Explorer to discover test files. node_modules is always excluded."
+        },
+        "rundebug.coverageFile": {
+          "type": "string",
+          "default": "coverage/lcov.info",
+          "description": "Workspace-relative path to the lcov file produced by a coverage run, loaded into the editor's coverage view."
         }
       }
     }
@@ -399,7 +488,7 @@
     "compile-tests": "tsc -p ./",
     "pretest": "pnpm check",
     "test": "vscode-test",
-    "test:unit": "pnpm compile-tests && mocha out/test/registry.test.js out/test/selectCommand.test.js",
+    "test:unit": "pnpm compile-tests && mocha out/test/registry.test.js out/test/selectCommand.test.js out/test/frameworks.test.js out/test/discovery.test.js out/test/lcov.test.js",
     "vsix": "vsce package --no-dependencies",
     "publish:vsce": "vsce publish --no-dependencies",
     "publish:ovsx": "ovsx publish --no-dependencies"
